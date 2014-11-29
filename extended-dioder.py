@@ -8,18 +8,25 @@ from threading import Thread
 class ExtendedDioder(Dioder, Thread):
 	def __init__(self, *args, **kwargs):
 		super(ExtendedDioder, self).__init__(*args, **kwargs)
+		# thread status
 		self.running = True
+		# method with the current mode
 		self.mode = None
+		# should the current mode be cancelled
 		self.modeBreak = False
+		# last mode (for switching)
 		self.savedMode = signal.SIGRTMIN + 1
 
+	# checks, if mode should be cancelled
 	def shouldBreak(self):
 		returnVal = not self.running or self.modeBreak
 		self.modeBreak = False
 		return returnVal
 
 	def setMode(self, signalNum):
+		# at startup the mode is None
 		if self.mode: self.modeBreak = True
+		# signal to method mode mapping
 		signals = {
 					34: "dark",
 					35: "lightUp",
@@ -35,6 +42,7 @@ class ExtendedDioder(Dioder, Thread):
 					45: "orange",
 					46: "white"
 				}
+		# special signal 50 for switching through modes
 		if signalNum == 50:
 			signalNum = self.savedMode
 			self.savedMode += 1
@@ -45,27 +53,34 @@ class ExtendedDioder(Dioder, Thread):
 		print "Running ", signals[signalNum]
 
 	def run(self):
+		# main loop
 		while self.running:
+			# selected mode or "dark" (to make sure all LEDs stay dark)
 			if self.mode:
 				self.mode()
 			else:
 				self.dark()
 
+	# all LEDs off
 	def dark(self):
 		self.showColor(0, 0, 0)
 
+	# all LEDs on
 	def white(self):
 		self.showColor(255, 255, 255)
 
+	# a nice orange
 	def orange(self):
 		self.showColor(173, 76, 0)
 
+	# set color to all LEDs
 	def showColor(self, color0, color1, color2):
 		while not self.shouldBreak():
 			self.setStripColor(color0, color1, color2)
 			self.show()
 			time.sleep(0.5)
 
+	# light up smoothly
 	def lightUp(self):
 		for color in range(256):
 			if self.shouldBreak(): return
@@ -73,6 +88,7 @@ class ExtendedDioder(Dioder, Thread):
 			self.show()
 		self.white()
 
+	# a nice rainbow fading through
 	def rainbow(self, waitMs=20):
 		for j in range(256):
 			for i in range(self.limits[1]):
@@ -92,7 +108,6 @@ class ExtendedDioder(Dioder, Thread):
 		else:
 			wheelPos -= 170
 			return (0, wheelPos * 3, 255 - wheelPos * 3)
-
 	def wipeRed(self):
 		self.colorWipe((255, 0, 0))
 
@@ -109,6 +124,7 @@ class ExtendedDioder(Dioder, Thread):
 			self.show()
 			time.sleep(waitMs*0.001)
 
+	# like colorWipe() but from center
 	def colorWipeCenter(self, color=(255, 255, 255), waitMs=50):
 		center = int(round(self.limits[1]/2))
 		i = center
@@ -123,6 +139,7 @@ class ExtendedDioder(Dioder, Thread):
 			i -= 1
 			j += 1
 
+	# like colorWipe() but from first and last LED
 	def colorWipeCenterReverse(self, color=(0, 255, 0), waitMs=50):
 		center = int(round(self.limits[1]/2))
 		i = 0
@@ -141,12 +158,14 @@ class ExtendedDioder(Dioder, Thread):
 		self.colorWipeCenter(color, waitMs)
 		self.colorWipeCenterReverse((0, 0, 0), waitMs)
 
+	# strobo color (default: white)
 	def strobo(self, color=(255, 255, 255)):
 		for c in [color] + [(0, 0, 0)]:
 			if self.shouldBreak(): return
 			self.setStripColor(*c)
 			self.show()
 
+	# a nice fire effect using Gauss
 	def ambientColorFade(self, color1=(254, 100, 0), color2=(255, 120, 1), waitMs=50):
 		color = [random.randint(color1[x], color2[x]) for x in range(3)]
 		self.setStripColor(color[0], color[1], color[2])
@@ -189,16 +208,14 @@ class ExtendedDioder(Dioder, Thread):
 
 			time.sleep(waitMs*(0.0001*random.randint(0, 5)))
 
-
+# start the thread
+# FIXME: put this in main()
 serialLogic = SerialLogic("/dev/ttyACM0", 57600)
-diod0 = ExtendedDioder(serialLogic) #0 0,38
-#diod1 = ExtendedDioder(serialLogic, (0, 49)) #1
+diod0 = ExtendedDioder(serialLogic)
 diod0.start()
-#diod1.start()
 
 def wrapMode(signalNum, stackframe):
 	diod0.setMode(signalNum)
-	#diod1.setMode(signalNum)
 
 for i in range(signal.SIGRTMIN, signal.SIGRTMAX+1):
 	signal.signal(i, wrapMode)
